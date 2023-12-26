@@ -1,4 +1,4 @@
-from django.shortcuts import render,redirect
+from django.shortcuts import render,redirect,HttpResponse
 from .forms import RegistrationForm
 from django.contrib.auth.decorators import login_required
 from .models import Account
@@ -40,10 +40,11 @@ def register(request):
             to_email = email
             send_email = EmailMessage(mail_subject,message,to=[to_email])
             send_email.send()
-            messages.success(request,'registration successfull')
-            return redirect('register')
+          
+            return redirect('/accounts/login/?command=verification&email='+email)
     else:
         form = RegistrationForm()
+        
             
   
     context = {
@@ -53,13 +54,13 @@ def register(request):
 
 def login(request):
     if request.method=="POST":
-        email = request.POST['email']
-        password = request.POST['password']
+        email = request.POST.get('email')
+        password = request.POST.get('password')
         user = auth.authenticate(email=email,password=password)
         if user is not None:
             auth.login(request,user)
             messages.success(request,'You are now logged in')
-            return redirect('home')
+            return redirect('dashboard')
         else:
             messages.error(request,'Invalid login credentials')
             return redirect('login')
@@ -78,6 +79,55 @@ def logout(request):
 
 
 
-def activate(request):
-    return re
+def activate(request,uidb64,token):
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = Account._default_manager.get(pk=uid)
+        
+    except(TypeError,ValueError,OverflowError,Account.DoesNotExist):
+        user = None
+    
+    if user is not None and default_token_generator.check_token(user,token):
+        user.is_active=True
+        user.save()
+        messages.success(request,'Congragulations account activated')
+        return redirect('login')
+    else:
+        messages.error(request,"invalid activation link")
+        return redirect('register')
+    
+
+
+@login_required(login_url='login')
+def dashboard(request):
+    return render(request,'accounts/dashboard.html')
+
+
+def forgotPassword(request):
+    if request.method=="POST":
+        email=request.POST['email']
+        if Account.objects.filter(email=email).exists():
+            user = Account.objects.get(email__exact=email)
+            current_site = get_current_site(request)
+            mail_subject = 'reset your password'
+            message = render_to_string('accounts/reset_password_email.html',{
+                'user':user,
+                'domain':current_site,
+                'uid':urlsafe_base64_encode(force_bytes(user.pk)),
+                'token':default_token_generator.make_token(user),
+            })
+            to_email = email
+            send_email = EmailMessage(mail_subject,message,to=[to_email])
+            send_email.send()
+            messages.success(request,'password reset email has been sent your email address')
+            return redirect('login')
+        else:
+            messages.error(request,'Account does not exist')
+            return redirect('forgotPassword')
+            
+        
+    return render(request,'accounts/forgotpassword.html')
+    
+        
+        
     
